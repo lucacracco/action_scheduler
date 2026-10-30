@@ -1,0 +1,14 @@
+action.configuration.action_scheduler_entity_delete:*:
+  type: action_configuration_default
+  label: 'Delete entity immediately configuration'
+
+action.configuration.action_scheduler_user_cancel:
+  type: mapping
+  label: 'Cancel user account configuration'
+  mapping:
+    user_cancel_method:
+      type: string
+      label: 'Cancellation method'
+    user_cancel_notify:
+      type: boolean
+      label: 'Notify user when account is canceled'

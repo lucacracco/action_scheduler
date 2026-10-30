@@ -1,0 +1,10 @@
+name: 'Action scheduler'
+type: module
+description: 'Schedules actions and runs them at a set date and time, tracking each schedule through the Scheduled Action entity.'
+core_version_requirement: ^11
+package: Custom
+dependencies:
+  - drupal:system
+  - drupal:datetime
+  - drupal:options
+  - drupal:user

@@ -1,0 +1,22 @@
+entity.scheduled_action.collection:
+  title: 'Scheduled actions'
+  route_name: entity.scheduled_action.collection
+  base_route: system.admin_content
+  weight: 20
+
+# The canonical route is the edit form.
+entity.scheduled_action.canonical:
+  title: 'Edit'
+  route_name: entity.scheduled_action.canonical
+  base_route: entity.scheduled_action.canonical
+
+entity.scheduled_action.delete_form:
+  title: 'Delete'
+  route_name: entity.scheduled_action.delete_form
+  base_route: entity.scheduled_action.canonical
+  weight: 10
+
+# The "Scheduled actions" tab of the entities actions run on.
+action_scheduler.target_tab:
+  deriver: Drupal\action_scheduler\Plugin\Derivative\ScheduledActionLocalTasks
+  weight: 50

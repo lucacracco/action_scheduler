@@ -1,0 +1,11 @@
+services:
+  _defaults:
+    autowire: true
+  logger.channel.action_scheduler:
+    parent: logger.channel_base
+    arguments: ['action_scheduler']
+  Drupal\action_scheduler\ScheduledActionTargetResolver: ~
+  Drupal\action_scheduler\ScheduledActionExecutor: ~
+  Drupal\action_scheduler\Routing\ScheduledActionTargetRouteSubscriber:
+    tags:
+      - { name: event_subscriber }

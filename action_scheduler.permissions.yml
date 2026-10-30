@@ -1,0 +1,4 @@
+administer scheduled actions:
+  title: 'Administer scheduled actions'
+  description: 'Create, edit and delete scheduled actions.'
+  restrict access: true

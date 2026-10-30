@@ -1,0 +1,19 @@
+{
+  "name": "drupal/action_scheduler",
+  "type": "drupal-custom-module",
+  "description": "Schedules configured actions and runs them at a set date and time.",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "drupal/core": "^11"
+  },
+  "autoload": {
+    "psr-4": {
+      "Drupal\\action_scheduler\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Drupal\\Tests\\action_scheduler\\": "tests/src/"
+    }
+  }
+}
