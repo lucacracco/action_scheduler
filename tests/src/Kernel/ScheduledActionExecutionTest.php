@@ -101,6 +101,7 @@ class ScheduledActionExecutionTest extends KernelTestBase {
     $this->assertSame([
       ScheduledActionInterface::STATUS_EXECUTED => 2,
       ScheduledActionInterface::STATUS_FAILED => 2,
+      ScheduledActionInterface::STATUS_CANCELLED => 0,
     ], $this->executor->executeDue());
 
     $this->assertStatus(ScheduledActionInterface::STATUS_EXECUTED, $executed);
@@ -131,6 +132,7 @@ class ScheduledActionExecutionTest extends KernelTestBase {
     $this->assertSame([
       ScheduledActionInterface::STATUS_EXECUTED => 0,
       ScheduledActionInterface::STATUS_FAILED => 2,
+      ScheduledActionInterface::STATUS_CANCELLED => 0,
     ], $this->executor->executeDue());
     $this->assertStatus(ScheduledActionInterface::STATUS_FAILED, $missing_plugin);
     $this->assertStatus(ScheduledActionInterface::STATUS_FAILED, $missing_owner);
@@ -142,17 +144,21 @@ class ScheduledActionExecutionTest extends KernelTestBase {
   public function testCron(): void {
     $target = $this->createUser();
     $due = $this->createSchedule('user_block_user_action', $this->admin, '2020-01-01T00:00:00', $target);
+    $message = $this->createSchedule('action_message_action', $this->admin, '2020-01-01T00:01:00', NULL, ['message' => 'Hello']);
     $future = $this->createSchedule('user_block_user_action', $this->admin, '2099-01-01T00:00:00', $target);
 
-    // Nothing is queued again while the queue holds items.
+    // Schedules still in the queue are queued again.
     $queue = $this->container->get('queue')->get(ScheduledActionExecutor::QUEUE_NAME);
-    $this->assertSame(1, $this->executor->queueDue());
-    $this->assertSame(0, $this->executor->queueDue());
-    $this->assertSame(1, $queue->numberOfItems());
-    $queue->deleteQueue();
+    $this->assertSame(2, $this->executor->queueDue());
+    $this->assertSame(2, $this->executor->queueDue());
+    $this->assertSame(4, $queue->numberOfItems());
 
+    // Cron queues them a third time, but runs each action only once.
     $this->container->get('cron')->run();
     $this->assertSame(0, $queue->numberOfItems());
+    $messages = $this->container->get('messenger')->messagesByType(MessengerInterface::TYPE_STATUS);
+    $this->assertSame(['Hello'], array_map('strval', $messages));
+    $this->assertStatus(ScheduledActionInterface::STATUS_EXECUTED, $message);
     $this->assertStatus(ScheduledActionInterface::STATUS_EXECUTED, $due);
     $this->assertStatus(ScheduledActionInterface::STATUS_PENDING, $future);
     $this->assertTrue(User::load($target->id())->isBlocked());
@@ -233,6 +239,7 @@ class ScheduledActionExecutionTest extends KernelTestBase {
     $this->assertSame([
       ScheduledActionInterface::STATUS_EXECUTED => 2,
       ScheduledActionInterface::STATUS_FAILED => 2,
+      ScheduledActionInterface::STATUS_CANCELLED => 0,
     ], $this->executor->executeDue());
     $this->assertStatus(ScheduledActionInterface::STATUS_EXECUTED, $block);
     $this->assertTrue(User::load($blocked->id())->isBlocked());

@@ -10,7 +10,7 @@ use Symfony\Component\Validator\Attribute\HasNamedArguments;
 use Symfony\Component\Validator\Constraint as SymfonyConstraint;
 
 /**
- * Checks an executed or failed scheduled action is not changed.
+ * Checks a processed (executed, failed or cancelled) schedule is not changed.
  */
 #[Constraint(
   id: 'ScheduledActionProcessed',

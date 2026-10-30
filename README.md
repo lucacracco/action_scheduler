@@ -8,13 +8,13 @@ records:
 - the entity the action runs on (its *target*), when the action needs one;
 - when the action is scheduled to run;
 - when the schedule was created and last changed, and who created it;
-- when the action was executed;
-- the schedule status: *Pending*, *Executed* or *Failed*.
+- when the schedule was processed;
+- the schedule status: *Pending*, *Executed*, *Failed* or *Cancelled*.
 
 ## Requirements
 
 - Drupal 11
-- Core modules: System, Datetime, Options
+- Core modules: System, Datetime, Options, User
 
 ## Installation
 
@@ -44,7 +44,7 @@ two sections:
 
 - **Pending**, next to run first, without the *Status* and *Executed*
   columns;
-- **Processed** (executed or failed), last run first, without the
+- **Processed** (executed, failed or cancelled), last run first, without the
   *Scheduled for* column.
 
 Its **Add scheduled action** button opens the add form with that entity as a
@@ -63,8 +63,9 @@ A schedule is *due* when it is *Pending* and its date has passed.
 
 - **On cron**, the due schedules are added to the
   `action_scheduler_execute` queue, which cron then processes for up to 60
-  seconds per run; what is left is processed on the next runs. Nothing new is
-  queued while the queue still holds items.
+  seconds per run; what is left is processed on the next runs. A schedule
+  still waiting in the queue is queued again on the next run, but its action
+  runs only once: the extra items are skipped.
 - **With Drush**, `drush action-scheduler:run` (alias `asr`) executes all the
   due schedules right away, without the queue.
 
@@ -77,18 +78,19 @@ user's permissions. A schedule is marked as **Failed** when:
   action on the target;
 - the action throws an error.
 
-Otherwise it is marked as **Executed**. Either way the time of the run is
-stored and shown in the *Executed* column of the list, and an entry is added
-to the site log (channel `action_scheduler`), with the reason when the
-schedule failed.
+It is marked as **Cancelled** when another module cancels the run (see
+*For developers*). Otherwise it is marked as **Executed**. In every case the
+time of the run is stored and shown in the *Executed* column of the list, and
+an entry is added to the site log (channel `action_scheduler`), with the
+reason when the schedule failed or was cancelled.
 
-Executed and failed schedules are kept as a record: their edit form can still
-be opened, but every field and button is disabled, and they cannot be
-deleted. To retry a failed action, create a new schedule.
+Executed, failed and cancelled schedules are kept as a record: their edit form
+can still be opened, but every field and button is disabled, and they cannot
+be deleted. To retry an action, create a new schedule.
 
 The same rule applies to schedules changed from code or through web services
-(REST, JSON:API): validating an executed or failed schedule whose values have
-changed reports a violation. Deleting them from code stays possible, for
+(REST, JSON:API): validating a processed schedule whose values have changed
+reports a violation. Deleting them from code stays possible, for
 example to clean up old records or before uninstalling the module.
 
 ## How actions are chosen: plugins, not configured actions
@@ -178,6 +180,51 @@ ID)*. When the entity is deleted by a schedule, that schedule is not counted.
   nothing. Avoid scheduling them: the schedule form shows a warning when one
   of them is selected (any plugin that declares a `confirm_form_route_name`).
   Use the actions provided by this module instead.
+
+## For developers: execution events
+
+Two events, named in `Drupal\action_scheduler\Event\ScheduledActionEvents`,
+let other modules take part in the execution of each due schedule, whether it
+runs on cron or with Drush:
+
+- **`ScheduledActionEvents::PRE_EXECUTE`**
+  (`ScheduledActionPreExecuteEvent`) is dispatched before any check, so the
+  action plugin, the target or the owner may no longer exist. A subscriber
+  can:
+  - change the plugin configuration for this run with `setConfiguration()`;
+    the change is not saved in the schedule, nor validated by the plugin
+    form;
+  - cancel the run with `cancel($reason)`: the schedule is marked as
+    *Cancelled* and the reason is logged. Later subscribers are still called
+    and can check `isCancelled()`.
+- **`ScheduledActionEvents::POST_EXECUTE`**
+  (`ScheduledActionPostExecuteEvent`) is dispatched after the schedule has
+  been saved as *Executed*, *Failed* or *Cancelled*. `getReason()` tells why
+  it failed or was cancelled.
+
+The schedule must not be changed by subscribers. An exception thrown by a
+pre-execute subscriber marks the schedule as *Failed*; one thrown by a
+post-execute subscriber is only logged.
+
+```php
+use Drupal\action_scheduler\Event\ScheduledActionEvents;
+use Drupal\action_scheduler\Event\ScheduledActionPreExecuteEvent;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+
+class MySubscriber implements EventSubscriberInterface {
+
+  public static function getSubscribedEvents(): array {
+    return [ScheduledActionEvents::PRE_EXECUTE => 'onPreExecute'];
+  }
+
+  public function onPreExecute(ScheduledActionPreExecuteEvent $event): void {
+    if ($event->getSchedule()->getActionPluginId() === 'action_send_email_action') {
+      $event->cancel('Emails are disabled during maintenance.');
+    }
+  }
+
+}
+```
 
 ## Development
 

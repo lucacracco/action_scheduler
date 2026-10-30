@@ -15,7 +15,7 @@ use Symfony\Component\Validator\ConstraintValidator;
  * Validates the ScheduledActionProcessed constraint.
  *
  * The check is made on the stored schedule, so the executor can still mark a
- * pending schedule as executed or failed.
+ * pending schedule as executed, failed or cancelled.
  */
 class ScheduledActionProcessedConstraintValidator extends ConstraintValidator implements ContainerInjectionInterface {
 

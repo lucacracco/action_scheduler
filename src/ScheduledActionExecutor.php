@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace Drupal\action_scheduler;
 
+use Drupal\action_scheduler\Event\ScheduledActionEvents;
+use Drupal\action_scheduler\Event\ScheduledActionPostExecuteEvent;
+use Drupal\action_scheduler\Event\ScheduledActionPreExecuteEvent;
 use Drupal\Component\Datetime\TimeInterface;
+use Drupal\Core\Action\ActionInterface;
+use Drupal\Core\Action\ActionManager;
 use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Queue\QueueFactory;
@@ -14,12 +19,17 @@ use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\datetime\Plugin\Field\FieldType\DateTimeItemInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Executes scheduled actions that are due.
  *
  * Each action runs as the owner of its schedule: if the owner may not perform
- * it, or its target no longer exists, the schedule is marked as failed.
+ * it, or its target no longer exists, the schedule is marked as failed. Other
+ * modules can cancel a run, or change the plugin configuration it uses, and
+ * react to its outcome.
+ *
+ * @see \Drupal\action_scheduler\Event\ScheduledActionEvents
  */
 class ScheduledActionExecutor {
 
@@ -45,6 +55,9 @@ class ScheduledActionExecutor {
     protected QueueFactory $queueFactory,
     #[Autowire(service: 'logger.channel.action_scheduler')]
     protected LoggerInterface $logger,
+    #[Autowire(service: 'plugin.manager.action')]
+    protected ActionManager $actionManager,
+    protected EventDispatcherInterface $eventDispatcher,
   ) {}
 
   /**
@@ -71,17 +84,14 @@ class ScheduledActionExecutor {
   /**
    * Queues the due schedules for execution.
    *
-   * Nothing is queued while the queue still holds items, so a schedule is not
-   * queued again before its previous queue item is processed.
+   * A schedule still in the queue from a previous run is queued again: the
+   * extra item is skipped once the schedule has been executed.
    *
    * @return int
    *   The number of schedules queued.
    */
   public function queueDue(): int {
     $queue = $this->queueFactory->get(static::QUEUE_NAME);
-    if ($queue->numberOfItems() > 0) {
-      return 0;
-    }
     $ids = $this->getDueIds();
     foreach ($ids as $id) {
       $queue->createItem($id);
@@ -93,12 +103,14 @@ class ScheduledActionExecutor {
    * Executes the due schedules right away.
    *
    * @return array<string, int>
-   *   The number of schedules executed and failed, keyed by status.
+   *   The number of schedules executed, failed and cancelled, keyed by
+   *   status.
    */
   public function executeDue(): array {
     $counts = [
       ScheduledActionInterface::STATUS_EXECUTED => 0,
       ScheduledActionInterface::STATUS_FAILED => 0,
+      ScheduledActionInterface::STATUS_CANCELLED => 0,
     ];
     foreach ($this->getDueIds() as $id) {
       $status = $this->executeById($id);
@@ -134,25 +146,42 @@ class ScheduledActionExecutor {
    *   The schedule.
    *
    * @return string|null
-   *   The new status, ScheduledActionInterface::STATUS_EXECUTED or
-   *   ScheduledActionInterface::STATUS_FAILED, or NULL if the schedule is not
-   *   pending.
+   *   The new status, ScheduledActionInterface::STATUS_EXECUTED,
+   *   ScheduledActionInterface::STATUS_FAILED or
+   *   ScheduledActionInterface::STATUS_CANCELLED, or NULL if the schedule is
+   *   not pending.
    */
   public function execute(ScheduledActionInterface $schedule): ?string {
     if ($schedule->getStatus() !== ScheduledActionInterface::STATUS_PENDING) {
       return NULL;
     }
 
-    $this->runningId = (int) $schedule->id();
+    $status = ScheduledActionInterface::STATUS_FAILED;
+    $event = new ScheduledActionPreExecuteEvent($schedule);
     try {
-      $error = $this->run($schedule);
+      $this->eventDispatcher->dispatch($event, ScheduledActionEvents::PRE_EXECUTE);
+      $reason = $event->getCancelReason();
+      if ($reason !== NULL) {
+        $status = ScheduledActionInterface::STATUS_CANCELLED;
+      }
     }
-    finally {
-      $this->runningId = NULL;
+    catch (\Throwable $e) {
+      $reason = $e->getMessage();
     }
-    $status = $error === NULL
-      ? ScheduledActionInterface::STATUS_EXECUTED
-      : ScheduledActionInterface::STATUS_FAILED;
+
+    if ($reason === NULL) {
+      $this->runningId = (int) $schedule->id();
+      try {
+        $reason = $this->run($schedule, $event->getConfiguration());
+      }
+      finally {
+        $this->runningId = NULL;
+      }
+      if ($reason === NULL) {
+        $status = ScheduledActionInterface::STATUS_EXECUTED;
+      }
+    }
+
     $schedule->setStatus($status)
       ->setExecutedTime($this->time->getCurrentTime())
       ->save();
@@ -160,13 +189,21 @@ class ScheduledActionExecutor {
     $context = [
       '%label' => $schedule->label(),
       '@id' => $schedule->id(),
+      '@reason' => $reason ?? '',
       'link' => $schedule->toLink($this->t('Edit'), 'edit-form')->toString(),
     ];
-    if ($error === NULL) {
-      $this->logger->info('Executed scheduled action %label (ID @id).', $context);
+    match ($status) {
+      ScheduledActionInterface::STATUS_EXECUTED => $this->logger->info('Executed scheduled action %label (ID @id).', $context),
+      ScheduledActionInterface::STATUS_CANCELLED => $this->logger->warning('Scheduled action %label (ID @id) was cancelled: @reason', $context),
+      default => $this->logger->error('Scheduled action %label (ID @id) failed: @reason', $context),
+    };
+
+    // The schedule is saved: a failing subscriber must not stop the run.
+    try {
+      $this->eventDispatcher->dispatch(new ScheduledActionPostExecuteEvent($schedule, $reason), ScheduledActionEvents::POST_EXECUTE);
     }
-    else {
-      $this->logger->error('Scheduled action %label (ID @id) failed: @reason', $context + ['@reason' => $error]);
+    catch (\Throwable $e) {
+      $this->logger->error('A subscriber to the execution of scheduled action %label (ID @id) failed: @reason', ['@reason' => $e->getMessage()] + $context);
     }
     return $status;
   }
@@ -186,22 +223,32 @@ class ScheduledActionExecutor {
    *
    * @param \Drupal\action_scheduler\ScheduledActionInterface $schedule
    *   The schedule.
+   * @param array $configuration
+   *   The plugin configuration, as changed by the pre-execute event.
    *
    * @return \Drupal\Core\StringTranslation\TranslatableMarkup|string|null
    *   Why the action failed, or NULL if it was executed.
    */
-  protected function run(ScheduledActionInterface $schedule): TranslatableMarkup|string|null {
+  protected function run(ScheduledActionInterface $schedule, array $configuration): TranslatableMarkup|string|null {
     $plugin_id = (string) $schedule->getActionPluginId();
-    $plugin = $schedule->getActionPlugin();
-    if (!$plugin || !$this->targetResolver->isSchedulable($plugin_id)) {
+    if (!$this->targetResolver->isSchedulable($plugin_id)) {
+      return $this->t('the action plugin @plugin does not exist or cannot be scheduled.', ['@plugin' => $plugin_id]);
+    }
+    try {
+      $plugin = $this->actionManager->createInstance($plugin_id, $configuration);
+    }
+    catch (\Throwable $e) {
+      return $e->getMessage();
+    }
+    if (!$plugin instanceof ActionInterface) {
       return $this->t('the action plugin @plugin does not exist or cannot be scheduled.', ['@plugin' => $plugin_id]);
     }
 
     $target = NULL;
     $target_type = $this->targetResolver->getTargetEntityTypeId($plugin_id);
-    if ($target_type) {
+    if ($target_type !== NULL) {
       $target = $schedule->getTargetEntity();
-      if (!$target || $target->getEntityTypeId() !== $target_type) {
+      if ($target === NULL || $target->getEntityTypeId() !== $target_type) {
         return $this->t('the target @type @id no longer exists.', [
           '@type' => $schedule->getTargetEntityTypeId(),
           '@id' => $schedule->getTargetEntityId(),
@@ -209,8 +256,9 @@ class ScheduledActionExecutor {
       }
     }
 
+    // getOwner() returns NULL once the owner is deleted.
     $owner = $schedule->getOwner();
-    if (!$owner) {
+    if ($owner === NULL) {
       return $this->t('the owner of the schedule no longer exists.');
     }
 
@@ -220,6 +268,9 @@ class ScheduledActionExecutor {
       if (!$access->isAllowed()) {
         return $this->t('@user is not allowed to perform the action.', ['@user' => $owner->getDisplayName()]);
       }
+      // Actions take their target as argument, which ExecutableInterface
+      // does not declare.
+      // @phpstan-ignore arguments.count
       $plugin->execute($target);
     }
     catch (\Throwable $e) {

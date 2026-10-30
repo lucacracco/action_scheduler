@@ -117,7 +117,7 @@ class ScheduledActionForm extends ContentEntityForm {
     }
 
     // A fixed target is shown, not edited, and only its actions are offered.
-    if ($this->fixedTarget) {
+    if ($this->fixedTarget !== NULL) {
       $form['fixed_target'] = [
         '#type' => 'item',
         '#title' => $this->fixedTarget->getEntityType()->getLabel(),
@@ -162,13 +162,13 @@ class ScheduledActionForm extends ContentEntityForm {
     ];
 
     $plugin_id = $this->getSelectedPluginId($form_state);
-    if (!$plugin_id || !$this->actionManager->hasDefinition($plugin_id)) {
+    if ($plugin_id === NULL || !$this->actionManager->hasDefinition($plugin_id)) {
       return $form;
     }
 
     // Values typed for a previous action may not fit the new one.
     $triggering_element = $form_state->getTriggeringElement();
-    if ($triggering_element && in_array($triggering_element['#parents'][0] ?? NULL, ['plugin', 'plugin_update'], TRUE)) {
+    if ($triggering_element !== NULL && in_array($triggering_element['#parents'][0] ?? NULL, ['plugin', 'plugin_update'], TRUE)) {
       $input = &$form_state->getUserInput();
       unset($input['settings']);
     }
@@ -190,7 +190,7 @@ class ScheduledActionForm extends ContentEntityForm {
     }
 
     $target_type = $this->targetResolver->getTargetEntityTypeId($plugin_id);
-    if ($target_type && !$this->fixedTarget) {
+    if ($target_type !== NULL && $this->fixedTarget === NULL) {
       $default = $entity->getTargetEntityTypeId() === $target_type
         ? $entity->getTargetEntity()
         : NULL;
@@ -273,21 +273,21 @@ class ScheduledActionForm extends ContentEntityForm {
   /**
    * {@inheritdoc}
    */
-  public function validateForm(array &$form, FormStateInterface $form_state): void {
+  public function validateForm(array &$form, FormStateInterface $form_state): ContentEntityInterface {
     /** @var \Drupal\action_scheduler\ScheduledActionInterface $entity */
     $entity = $this->entity;
     // The form is disabled, but a forged submission must not save either.
     if ($entity->isProcessed()) {
       $form_state->setErrorByName('', $this->t('This scheduled action has been processed: it can no longer be changed or deleted.'));
-      return;
+      return $entity;
     }
     $plugin_id = $this->getSelectedPluginId($form_state);
-    $plugin = $plugin_id ? $this->createPlugin($plugin_id) : NULL;
+    $plugin = $plugin_id !== NULL ? $this->createPlugin($plugin_id) : NULL;
     if ($plugin instanceof PluginFormInterface && $this->hasPluginSubform($form, $plugin_id)) {
       $subform_state = SubformState::createForSubform($form['settings']['configuration'], $form, $form_state);
       $plugin->validateConfigurationForm($form['settings']['configuration'], $subform_state);
     }
-    parent::validateForm($form, $form_state);
+    return parent::validateForm($form, $form_state);
   }
 
   /**
@@ -297,8 +297,8 @@ class ScheduledActionForm extends ContentEntityForm {
     parent::copyFormValuesToEntity($entity, $form, $form_state);
     /** @var \Drupal\action_scheduler\ScheduledActionInterface $entity */
     $plugin_id = $this->getSelectedPluginId($form_state);
-    $plugin = $plugin_id ? $this->createPlugin($plugin_id) : NULL;
-    if (!$plugin_id || !$plugin) {
+    $plugin = $plugin_id !== NULL ? $this->createPlugin($plugin_id) : NULL;
+    if ($plugin_id === NULL || $plugin === NULL) {
       // Keep the submitted plugin ID so the validator reports what is wrong.
       $entity->set('plugin', $plugin_id);
       $entity->set('configuration', []);
@@ -316,7 +316,7 @@ class ScheduledActionForm extends ContentEntityForm {
     $entity->setActionPlugin($plugin_id, $configuration);
 
     // The validator rejects a fixed target the selected action does not use.
-    if ($this->fixedTarget) {
+    if ($this->fixedTarget !== NULL) {
       $entity->setTargetEntity($this->fixedTarget);
       return;
     }
@@ -326,7 +326,7 @@ class ScheduledActionForm extends ContentEntityForm {
     $target_id = is_numeric($target_id) ? (int) $target_id : NULL;
 
     $target = NULL;
-    if ($target_type && $target_id !== NULL) {
+    if ($target_type !== NULL && $target_id !== NULL) {
       $target = $this->entityTypeManager
         ->getStorage($target_type)
         ->load($target_id);

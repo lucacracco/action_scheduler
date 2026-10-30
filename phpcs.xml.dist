@@ -12,4 +12,7 @@
   <!-- Keep the extensions in alphabetic order like Core. -->
   <arg name="extensions" value="engine,inc,info,install,module,php,profile,test,theme,yml"/>
 
+  <exclude-pattern>.ddev/*</exclude-pattern>
+  <exclude-pattern>tests/*</exclude-pattern>
+
 </ruleset>

@@ -2,7 +2,14 @@ includes:
   # This placeholder filename will be replaced with the value of variable $_PHPSTAN_BASELINE_FILENAME
   - phpstan-baseline.neon
 parameters:
-    level: 0
+    level: 5
+    # Drupal documents some return types too narrowly, e.g. getOwner() may
+    # return NULL: do not report checks on them as always true or false.
+    treatPhpDocTypesAsCertain: false
+    paths:
+        - src
+    excludePaths:
+        - tests
     fileExtensions:
         - php
         - module
@@ -14,7 +21,3 @@ parameters:
     ignoreErrors:
         # new static() is a best practice in Drupal, so we cannot fix that.
         - "#^Unsafe usage of new static#"
-        # $this->assert*() is the Drupal convention in tests.
-        -
-            message: "#^Dynamic call to static method PHPUnit\\\\Framework\\\\Assert::#"
-            path: tests/*

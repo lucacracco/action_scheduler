@@ -156,8 +156,9 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
       ->setDisplayConfigurable('view', TRUE);
 
     // The author defaults to the current user and is not editable.
-    $fields['uid']
-      ->setLabel(new TranslatableMarkup('Created by'))
+    $uid = $fields['uid'];
+    assert($uid instanceof BaseFieldDefinition);
+    $uid->setLabel(new TranslatableMarkup('Created by'))
       ->setDescription(new TranslatableMarkup('The user who created the schedule.'))
       ->setDisplayOptions('view', [
         'label' => 'inline',
@@ -178,7 +179,7 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
 
     $fields['executed'] = BaseFieldDefinition::create('timestamp')
       ->setLabel(new TranslatableMarkup('Executed'))
-      ->setDescription(new TranslatableMarkup('The time the action was executed or failed.'))
+      ->setDescription(new TranslatableMarkup('The time the schedule was processed: executed, failed or cancelled.'))
       ->setDisplayOptions('view', [
         'label' => 'inline',
         'type' => 'timestamp',
@@ -204,6 +205,7 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
       static::STATUS_PENDING => new TranslatableMarkup('Pending'),
       static::STATUS_EXECUTED => new TranslatableMarkup('Executed'),
       static::STATUS_FAILED => new TranslatableMarkup('Failed'),
+      static::STATUS_CANCELLED => new TranslatableMarkup('Cancelled'),
     ];
   }
 
@@ -216,7 +218,7 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
   public function label(): string|TranslatableMarkup|null {
     $plugin_id = $this->getActionPluginId();
     $date = $this->getScheduledDate();
-    if (!$plugin_id || !$date) {
+    if ($plugin_id === NULL || $plugin_id === '' || $date === NULL) {
       return NULL;
     }
     // Fall back to the plugin ID if the plugin no longer exists.
@@ -266,7 +268,7 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
    */
   public function getActionPlugin(): ?ActionInterface {
     $plugin_id = $this->getActionPluginId();
-    if (!$plugin_id) {
+    if ($plugin_id === NULL || $plugin_id === '') {
       return NULL;
     }
     // Entity classes cannot use dependency injection.
@@ -298,7 +300,7 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
   public function getTargetEntity(): ?ContentEntityInterface {
     $entity_type_id = $this->getTargetEntityTypeId();
     $entity_id = $this->getTargetEntityId();
-    if (!$entity_type_id || $entity_id === NULL) {
+    if ($entity_type_id === NULL || $entity_type_id === '' || $entity_id === NULL) {
       return NULL;
     }
     // Entity classes cannot use dependency injection.
@@ -323,7 +325,9 @@ class ScheduledAction extends ContentEntityBase implements ScheduledActionInterf
    * {@inheritdoc}
    */
   public function getScheduledDate(): ?DrupalDateTime {
-    return $this->get('scheduled')->date;
+    // The computed "date" property of the datetime item.
+    $date = $this->get('scheduled')->first()?->get('date')->getValue();
+    return $date instanceof DrupalDateTime ? $date : NULL;
   }
 
   /**

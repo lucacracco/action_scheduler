@@ -1,0 +1,7 @@
+name: 'Action scheduler test'
+type: module
+description: 'Subscribes to the execution events of scheduled actions, for tests.'
+package: Testing
+hidden: true
+dependencies:
+  - action_scheduler:action_scheduler

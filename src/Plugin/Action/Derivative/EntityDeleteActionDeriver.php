@@ -24,12 +24,12 @@ class EntityDeleteActionDeriver extends EntityActionDeriverBase {
    */
   public function getDerivativeDefinitions($base_plugin_definition): array {
     if ($this->derivatives === []) {
-      parent::getDerivativeDefinitions($base_plugin_definition);
       // The core delete actions are already labelled "Delete <entity type>".
-      foreach (array_keys($this->derivatives) as $entity_type_id) {
-        $this->derivatives[$entity_type_id]['label'] = $this->t('Delete @entity_type immediately', [
+      foreach (parent::getDerivativeDefinitions($base_plugin_definition) as $entity_type_id => $definition) {
+        $definition['label'] = $this->t('Delete @entity_type immediately', [
           '@entity_type' => $this->entityTypeManager->getDefinition($entity_type_id)->getSingularLabel(),
         ]);
+        $this->derivatives[$entity_type_id] = $definition;
       }
     }
     return $this->derivatives;

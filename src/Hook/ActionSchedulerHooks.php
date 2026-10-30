@@ -66,7 +66,7 @@ class ActionSchedulerHooks {
       $query->condition('id', $running_id, '<>');
     }
     $count = $query->count()->execute();
-    if (!$count) {
+    if ($count === 0) {
       return;
     }
     $this->messenger->addWarning($this->formatPlural(

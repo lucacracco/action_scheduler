@@ -32,15 +32,17 @@ final class ActionSchedulerCommands extends DrushCommands {
     $counts = $this->executor->executeDue();
     $executed = $counts[ScheduledActionInterface::STATUS_EXECUTED];
     $failed = $counts[ScheduledActionInterface::STATUS_FAILED];
-    if ($executed + $failed === 0) {
+    $cancelled = $counts[ScheduledActionInterface::STATUS_CANCELLED];
+    if ($executed + $failed + $cancelled === 0) {
       $this->logger()->notice('No scheduled actions are due.');
       return;
     }
-    $this->logger()->success(dt('Executed @executed scheduled action(s), @failed failed.', [
+    $this->logger()->success(dt('Executed @executed scheduled action(s), @failed failed, @cancelled cancelled.', [
       '@executed' => $executed,
       '@failed' => $failed,
+      '@cancelled' => $cancelled,
     ]));
-    if ($failed > 0) {
+    if ($failed + $cancelled > 0) {
       $this->logger()->warning(dt('See the action_scheduler entries of the site log for the reasons.'));
     }
   }

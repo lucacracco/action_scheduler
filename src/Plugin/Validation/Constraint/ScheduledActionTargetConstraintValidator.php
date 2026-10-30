@@ -45,7 +45,7 @@ class ScheduledActionTargetConstraintValidator extends ConstraintValidator imple
     }
     // A missing action is reported by the required constraint of its field.
     $plugin_id = $entity->getActionPluginId();
-    if (!$plugin_id) {
+    if ($plugin_id === NULL || $plugin_id === '') {
       return;
     }
     if (!$this->actionManager->hasDefinition($plugin_id)) {
@@ -68,7 +68,7 @@ class ScheduledActionTargetConstraintValidator extends ConstraintValidator imple
     $entity_type_id = $entity->getTargetEntityTypeId();
     $entity_id = $entity->getTargetEntityId();
 
-    if (!$required_type) {
+    if ($required_type === NULL) {
       if ($entity_type_id !== NULL || $entity_id !== NULL) {
         $this->context->buildViolation($constraint->notAllowedMessage)
           ->setParameter('%action', (string) $action_label)
@@ -100,9 +100,9 @@ class ScheduledActionTargetConstraintValidator extends ConstraintValidator imple
       return;
     }
 
-    // Only pending schedules need an existing target: executed or failed ones
+    // Only pending schedules need an existing target: processed ones
     // keep their history even after the target is deleted.
-    if ($entity->getStatus() === ScheduledActionInterface::STATUS_PENDING && !$entity->getTargetEntity()) {
+    if ($entity->getStatus() === ScheduledActionInterface::STATUS_PENDING && $entity->getTargetEntity() === NULL) {
       $this->context->buildViolation($constraint->notFoundMessage)
         ->setParameter('%entity_type', $required_label)
         ->setParameter('%id', (string) $entity_id)

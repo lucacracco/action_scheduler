@@ -53,7 +53,7 @@ class ScheduledActionTargetResolver {
     }
     $entity_type = $this->entityTypeManager->getDefinition($type, FALSE);
     // Targets are stored as numeric IDs, so only content entity types apply.
-    if (!$entity_type || !$entity_type->entityClassImplements(ContentEntityInterface::class)) {
+    if ($entity_type === NULL || !$entity_type->entityClassImplements(ContentEntityInterface::class)) {
       return NULL;
     }
     return $type;
@@ -109,7 +109,7 @@ class ScheduledActionTargetResolver {
       $target_type = $this->isSchedulable($plugin_id)
         ? $this->getTargetEntityTypeId($plugin_id)
         : NULL;
-      if ($target_type && $this->entityTypeManager->getDefinition($target_type)->hasLinkTemplate(static::LINK_TEMPLATE)) {
+      if ($target_type !== NULL && $this->entityTypeManager->getDefinition($target_type)->hasLinkTemplate(static::LINK_TEMPLATE)) {
         $entity_type_ids[$target_type] = $target_type;
       }
     }
@@ -137,7 +137,7 @@ class ScheduledActionTargetResolver {
       if ($target_entity_type_id !== NULL && $target_type !== $target_entity_type_id) {
         continue;
       }
-      $group = $target_type
+      $group = $target_type !== NULL
         ? (string) $this->entityTypeManager->getDefinition($target_type)->getLabel()
         : (string) $this->t('System');
       $options[$group][$plugin_id] = $definition['label'] ?? $plugin_id;

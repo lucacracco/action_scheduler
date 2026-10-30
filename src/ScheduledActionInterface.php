@@ -31,6 +31,13 @@ interface ScheduledActionInterface extends ContentEntityInterface, EntityOwnerIn
   const STATUS_FAILED = 'failed';
 
   /**
+   * Status of a schedule whose execution was cancelled by another module.
+   *
+   * @see \Drupal\action_scheduler\Event\ScheduledActionPreExecuteEvent::cancel()
+   */
+  const STATUS_CANCELLED = 'cancelled';
+
+  /**
    * Gets the creation timestamp of the schedule.
    *
    * @return int
@@ -139,8 +146,8 @@ interface ScheduledActionInterface extends ContentEntityInterface, EntityOwnerIn
   /**
    * Checks whether the schedule has been processed.
    *
-   * Processed schedules, executed or failed, are kept as a record: they can
-   * no longer be changed or deleted.
+   * Processed schedules, executed, failed or cancelled, are kept as a record:
+   * they can no longer be changed or deleted.
    *
    * @return bool
    *   TRUE if the schedule is no longer pending.
@@ -148,7 +155,7 @@ interface ScheduledActionInterface extends ContentEntityInterface, EntityOwnerIn
   public function isProcessed(): bool;
 
   /**
-   * Gets the time the action was executed or failed.
+   * Gets the time the schedule was processed.
    *
    * @return int|null
    *   The timestamp, or NULL if the schedule has not run yet.
@@ -156,7 +163,7 @@ interface ScheduledActionInterface extends ContentEntityInterface, EntityOwnerIn
   public function getExecutedTime(): ?int;
 
   /**
-   * Sets the time the action was executed or failed.
+   * Sets the time the schedule was processed.
    *
    * @param int $timestamp
    *   The timestamp.

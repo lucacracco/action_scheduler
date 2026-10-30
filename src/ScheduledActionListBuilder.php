@@ -195,19 +195,21 @@ class ScheduledActionListBuilder extends EntityListBuilder {
     /** @var \Drupal\action_scheduler\ScheduledActionInterface $entity */
     $scheduled = $entity->getScheduledDate();
     $statuses = ScheduledAction::statusAllowedValues();
+    // getOwner() returns NULL once the owner is deleted.
+    $owner = $entity->getOwner();
 
     $row = [
       'action' => $this->targetResolver
         ->getPluginLabel($entity->getActionPluginId() ?? ''),
       'target' => $this->buildTargetCell($entity),
-      'scheduled' => $scheduled
+      'scheduled' => $scheduled !== NULL
         ? $this->dateFormatter->format($scheduled->getTimestamp(), 'short')
         : '',
       'status' => $statuses[$entity->getStatus()] ?? $entity->getStatus(),
       'executed' => $entity->getExecutedTime() !== NULL
         ? $this->dateFormatter->format($entity->getExecutedTime(), 'short')
         : '',
-      'owner' => $entity->getOwner()?->getDisplayName() ?? '',
+      'owner' => $owner !== NULL ? $owner->getDisplayName() : '',
       'created' => $this->dateFormatter
         ->format($entity->getCreatedTime(), 'short'),
     ];
@@ -240,10 +242,10 @@ class ScheduledActionListBuilder extends EntityListBuilder {
       return '';
     }
     $target = $entity->getTargetEntity();
-    if (!$target) {
+    if ($target === NULL) {
       // The list must show the target again if it is recreated.
       $entity_type_id = $entity->getTargetEntityTypeId();
-      if ($entity_type_id && $this->entityTypeManager->hasDefinition($entity_type_id)) {
+      if ($entity_type_id !== NULL &&$this->entityTypeManager->hasDefinition($entity_type_id)) {
         $this->targetCacheability->addCacheTags(
           $this->entityTypeManager->getDefinition($entity_type_id)->getListCacheTags()
         );
